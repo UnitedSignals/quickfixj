@@ -809,6 +809,7 @@
       <field name="Text" required="N"/>
       <field name="EncodedTextLen" required="N"/>
       <field name="EncodedText" required="N"/>
+      <field name="QuoteType" required="N" />
     </group>
     <field name="ApplQueueDepth" required="N"/>
     <field name="ApplQueueResolution" required="N"/>
