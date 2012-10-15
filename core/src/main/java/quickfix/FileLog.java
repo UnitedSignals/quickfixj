@@ -19,16 +19,10 @@
 
 package quickfix;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
-
 import org.quickfixj.CharsetSupport;
-
 import quickfix.field.converter.UtcTimestampConverter;
+
+import java.io.*;
 
 /**
  * File log implementation. THIS CLASS IS PUBLIC ONLY TO MAINTAIN COMPATIBILITY
@@ -92,18 +86,20 @@ public class FileLog extends AbstractLog {
     }
 
     private void writeMessage(FileOutputStream stream, String message, boolean forceTimestamp) {
-        try {
-            if (forceTimestamp || includeTimestampForMessages) {
-                writeTimeStamp(stream);
+        if (!message.contains("35=W") /* MarketDataSnapshotFullRefresh */ && !message.contains("35=S") /* Quote */) {
+            try {
+                if (forceTimestamp || includeTimestampForMessages) {
+                    writeTimeStamp(stream);
+                }
+                stream.write(message.getBytes(CharsetSupport.getCharset()));
+                stream.write('\n');
+                stream.flush();
+                if (syncAfterWrite) {
+                    stream.getFD().sync();
+                }
+            } catch (IOException e) {
+                LogUtil.logThrowable(sessionID, "error writing message to log", e);
             }
-            stream.write(message.getBytes(CharsetSupport.getCharset()));
-            stream.write('\n');
-            stream.flush();
-            if (syncAfterWrite) {
-                stream.getFD().sync();
-            }
-        } catch (IOException e) {
-            LogUtil.logThrowable(sessionID, "error writing message to log", e);
         }
     }
 
