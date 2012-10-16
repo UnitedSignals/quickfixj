@@ -50,6 +50,7 @@ public class FileLog extends AbstractLog {
     
     private boolean includeMillis;
     private boolean includeTimestampForMessages;
+    private final boolean logVerbose;
     
     FileLog(String path, SessionID sessionID, boolean includeMillis, boolean includeTimestampForMessages, boolean logHeartbeats) throws FileNotFoundException {
         this.sessionID = sessionID;
@@ -68,6 +69,7 @@ public class FileLog extends AbstractLog {
 
         this.includeMillis = includeMillis;
         this.includeTimestampForMessages = includeTimestampForMessages;
+        this.logVerbose = Boolean.getBoolean("quickfixj.logging.verbose");
         
         openLogStreams(true);
     }
@@ -86,7 +88,7 @@ public class FileLog extends AbstractLog {
     }
 
     private void writeMessage(FileOutputStream stream, String message, boolean forceTimestamp) {
-        if (!message.contains("35=W") /* MarketDataSnapshotFullRefresh */ && !message.contains("35=S") /* Quote */) {
+        if ((!message.contains("35=W") /* MarketDataSnapshotFullRefresh */ && !message.contains("35=S") /* Quote */) || logVerbose) {
             try {
                 if (forceTimestamp || includeTimestampForMessages) {
                     writeTimeStamp(stream);
