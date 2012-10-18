@@ -39,7 +39,7 @@
 
 	<target name="regenerate.code">
 		<mkdir dir="${main.classes.dir}" />
-		<javac srcdir="${main.src.dir}/quickfix/codegen" includes="MessageCodeGenerator.java,CodeGenerationException.java" destdir="${main.classes.dir}" classpathref="main.lib.classpath">
+		<javac srcdir="${main.src.dir}/quickfix/codegen" includes="MessageCodeGenerator.java,CodeGenerationException.java" destdir="${main.classes.dir}" classpathref="main.lib.classpath" source="1.5" target="1.5">
 			<compilerarg line="${javac.args}" />
 		</javac>
 		<java classname="quickfix.codegen.MessageCodeGenerator" fork="yes">
@@ -106,7 +106,7 @@
 		<sequential>
 			<mkdir dir="@{output}" />
 			<javac destdir="@{output}" debug="${javac.debug}"
-					memoryMaximumSize="512m" fork="yes" nowarn="yes" encoding="iso8859-1">
+					memoryMaximumSize="512m" fork="yes" nowarn="yes" encoding="iso8859-1" source="1.5" target="1.5">
 				<compilerarg line="${javac.args}" />
 				<classpath refid="@{classpathref}" />
 				<src refid="@{srcref}" />
