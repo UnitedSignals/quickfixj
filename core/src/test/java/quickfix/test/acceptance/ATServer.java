@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
@@ -63,17 +64,22 @@ public class ATServer implements Runnable {
     private boolean useSSL;
     private String keyStoreName;
     private String keyStorePassword;
-
+    private Map<Object, Object> overridenProperties = null;
+    
     public ATServer() {
         // defaults
     }
 
-    @SuppressWarnings("unchecked")
     public ATServer(TestSuite suite, boolean threaded, TransportType transportType, int port) {
+        this(suite, threaded, transportType, port, null);
+    }
+    
+    public ATServer(TestSuite suite, boolean threaded, TransportType transportType, int port, Map<Object, Object> overridenProperties) {
         this.threaded = threaded;
+        this.overridenProperties = overridenProperties;
         this.transportType = transportType;
         this.port = port;
-        Enumeration e = suite.tests();
+        Enumeration<junit.framework.Test> e = suite.tests();
         while (e.hasMoreElements()) {
             fixVersions.add(e.nextElement().toString().substring(0, 5));
         }
@@ -112,6 +118,8 @@ public class ATServer implements Runnable {
             defaults.put("ValidateUserDefinedFields", "Y");
             // New for FIXT/FIX5
             defaults.put("DefaultApplVerID", "7");
+            if (overridenProperties != null) defaults.putAll(overridenProperties);
+            
             settings.set(defaults);
 
             if (fixVersions.contains("fix40")) {

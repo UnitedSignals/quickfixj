@@ -30,7 +30,6 @@ import org.quickfixj.QFJException;
 import quickfix.field.ApplVerID;
 
 public class DefaultDataDictionaryProviderTest {
-    private static final String CUSTOM_APP_VERSION = "Custom_Test";
     private static DataDictionary dictionaryForTest1;
     private static DataDictionary dictionaryForTest2;
 
@@ -85,10 +84,10 @@ public class DefaultDataDictionaryProviderTest {
     @Test
     public void returnRegisteredAppDictionaryWithoutDiscovery() throws Exception {
         DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider(false);
-        provider.addApplicationDictionary(new ApplVerID(FIX44), null, dictionaryForTest1);
-        provider.addApplicationDictionary(new ApplVerID(FIX40), null, dictionaryForTest2);
+        provider.addApplicationDictionary(new ApplVerID(FIX44), dictionaryForTest1);
+        provider.addApplicationDictionary(new ApplVerID(FIX40), dictionaryForTest2);
         
-        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40), null);
+        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40));
         
         assertThat(dd, is(dictionaryForTest2));
     }
@@ -96,9 +95,9 @@ public class DefaultDataDictionaryProviderTest {
     @Test
     public void returnNullAppDictionaryWithoutDiscovery() throws Exception {
         DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider(false);
-        provider.addApplicationDictionary(new ApplVerID(FIX44), null, dictionaryForTest1);
+        provider.addApplicationDictionary(new ApplVerID(FIX44), dictionaryForTest1);
         
-        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40), null);
+        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40));
         
         assertThat(dd, is(nullValue()));
     }
@@ -106,44 +105,22 @@ public class DefaultDataDictionaryProviderTest {
     @Test
     public void returnAppDictionaryWithDiscovery() throws Exception {
         DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider();
-        provider.addApplicationDictionary(new ApplVerID(FIX44), null, dictionaryForTest1);
+        provider.addApplicationDictionary(new ApplVerID(FIX44), dictionaryForTest1);
         
-        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40), null);
+        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40));
         
         assertThat(dd, is(notNullValue()));
         assertThat(dd.getVersion(), is(FixVersions.BEGINSTRING_FIX40));
     }
     
     @Test
-    public void returnCustomAppDictionaryWithoutDiscovery() throws Exception {
-        DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider(false);
-        provider.addApplicationDictionary(new ApplVerID(FIX44), null, dictionaryForTest1);
-        provider.addApplicationDictionary(new ApplVerID(FIX40), CUSTOM_APP_VERSION, dictionaryForTest2);
-        
-        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX40), CUSTOM_APP_VERSION);
-        
-        assertThat(dd, is(dictionaryForTest2));
-    }
-
-    @Test
-    public void returnCustomAppDictionaryWithDiscovery() throws Exception {
-        DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider();
-        provider.addApplicationDictionary(new ApplVerID(FIX44), null, dictionaryForTest1);
-        
-        DataDictionary dd = provider.getApplicationDataDictionary(new ApplVerID(FIX44), CUSTOM_APP_VERSION);
-        
-        assertThat(dd.getVersion(), is(FixVersions.BEGINSTRING_FIX44));
-        assertThat(dd, is(not(dictionaryForTest1)));
-    }
-
-    @Test
     public void throwExceptionIfAppDictionaryIsNotFound() throws Exception {
         DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider();
         
         try {
-            provider.getApplicationDataDictionary(new ApplVerID(FIX44), "Invalid_Test");
+            provider.getApplicationDataDictionary(new ApplVerID("Invalid_Test"));
         } catch (QFJException e) {
-            assertThat(e.getCause(), is(ConfigError.class));
+            assertThat(e.getMessage(), containsString("Unknown or unsupported ApplVerID"));
         }
     }
 
@@ -152,9 +129,17 @@ public class DefaultDataDictionaryProviderTest {
         DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider();
         
         try {
-            provider.getApplicationDataDictionary(new ApplVerID("999"), null);
+            provider.getApplicationDataDictionary(new ApplVerID("999"));
         } catch (QFJException e) {
             assertThat(e.getMessage(), containsString(" 999"));
         }
     }
+    
+    @Test
+    public void testDataDictionaryForFIX50SP() throws Exception {
+        DefaultDataDictionaryProvider provider = new DefaultDataDictionaryProvider();
+        provider.getApplicationDataDictionary(new ApplVerID(FIX50SP1) );
+        provider.getApplicationDataDictionary(new ApplVerID(FIX50SP2) );
+    }
+
 }

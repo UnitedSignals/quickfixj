@@ -1,26 +1,30 @@
 /*******************************************************************************
- * Copyright (c) quickfixengine.org  All rights reserved. 
- * 
- * This file is part of the QuickFIX FIX Engine 
- * 
- * This file may be distributed under the terms of the quickfixengine.org 
- * license as defined by quickfixengine.org and appearing in the file 
- * LICENSE included in the packaging of this file. 
- * 
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING 
- * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A 
- * PARTICULAR PURPOSE. 
- * 
- * See http://www.quickfixengine.org/LICENSE for licensing information. 
- * 
- * Contact ask@quickfixengine.org if any conditions of this licensing 
+ * Copyright (c) quickfixengine.org  All rights reserved.
+ *
+ * This file is part of the QuickFIX FIX Engine
+ *
+ * This file may be distributed under the terms of the quickfixengine.org
+ * license as defined by quickfixengine.org and appearing in the file
+ * LICENSE included in the packaging of this file.
+ *
+ * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+ * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE.
+ *
+ * See http://www.quickfixengine.org/LICENSE for licensing information.
+ *
+ * Contact ask@quickfixengine.org if any conditions of this licensing
  * are not clear to you.
  ******************************************************************************/
 
 package quickfix;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.math.BigDecimal;
 import java.util.Calendar;
@@ -29,13 +33,76 @@ import java.util.TimeZone;
 
 import org.junit.Test;
 
-import quickfix.field.*;
+import quickfix.field.AllocAccount;
+import quickfix.field.AllocShares;
+import quickfix.field.ApplVerID;
+import quickfix.field.AvgPx;
+import quickfix.field.BeginString;
+import quickfix.field.BidType;
+import quickfix.field.BodyLength;
+import quickfix.field.CheckSum;
+import quickfix.field.ClOrdID;
+import quickfix.field.CountryOfIssue;
+import quickfix.field.CrossID;
+import quickfix.field.CrossPrioritization;
+import quickfix.field.CrossType;
+import quickfix.field.CstmApplVerID;
+import quickfix.field.CumQty;
+import quickfix.field.EncodedText;
+import quickfix.field.EncodedTextLen;
+import quickfix.field.EncryptMethod;
+import quickfix.field.ExecID;
+import quickfix.field.ExecType;
+import quickfix.field.HandlInst;
+import quickfix.field.Headline;
+import quickfix.field.HopCompID;
+import quickfix.field.IOIid;
+import quickfix.field.LeavesQty;
+import quickfix.field.ListID;
+import quickfix.field.ListSeqNo;
+import quickfix.field.MDEntryPx;
+import quickfix.field.MsgDirection;
+import quickfix.field.MsgSeqNum;
+import quickfix.field.MsgType;
+import quickfix.field.NoOrders;
+import quickfix.field.OrdStatus;
+import quickfix.field.OrdType;
+import quickfix.field.OrderID;
+import quickfix.field.OrderQty;
+import quickfix.field.PartyID;
+import quickfix.field.PartyIDSource;
+import quickfix.field.PartyRole;
+import quickfix.field.Price;
+import quickfix.field.RawData;
+import quickfix.field.RawDataLength;
+import quickfix.field.RefMsgType;
+import quickfix.field.SecureData;
+import quickfix.field.SecurityID;
+import quickfix.field.SecurityIDSource;
+import quickfix.field.SecurityType;
+import quickfix.field.SenderCompID;
+import quickfix.field.SendingTime;
+import quickfix.field.SessionRejectReason;
+import quickfix.field.Side;
+import quickfix.field.Signature;
+import quickfix.field.SignatureLength;
+import quickfix.field.Symbol;
+import quickfix.field.TargetCompID;
+import quickfix.field.TargetSubID;
+import quickfix.field.TotNoOrders;
+import quickfix.field.TransactTime;
+import quickfix.field.UnderlyingCurrency;
+import quickfix.field.UnderlyingSymbol;
 import quickfix.fix42.NewOrderSingle;
-import quickfix.fix43.NewOrderList;
 import quickfix.fix43.Message.Header;
-import quickfix.fix44.*;
+import quickfix.fix43.NewOrderList;
+import quickfix.fix44.ExecutionReport;
+import quickfix.fix44.IndicationOfInterest;
+import quickfix.fix44.Logon;
 import quickfix.fix44.Logon.NoMsgTypes;
+import quickfix.fix44.NewOrderCross;
 import quickfix.fix44.NewOrderSingle.NoPartyIDs;
+import quickfix.fix44.News;
 import quickfix.fix44.component.Instrument;
 import quickfix.fix44.component.Parties;
 import quickfix.fix50.MarketDataSnapshotFullRefresh;
@@ -65,6 +132,68 @@ public class MessageTest {
         return new NewOrderSingle(new ClOrdID("CLIENT"), new HandlInst(
                 HandlInst.AUTOMATED_EXECUTION_ORDER_PUBLIC), new Symbol("ORCL"),
                 new Side(Side.BUY), new TransactTime(new Date(0)), new OrdType(OrdType.LIMIT));
+    }
+
+    @Test
+    public void testHeaderCustomFieldOrdering() throws Exception {
+        
+        class MyMessage extends Message {
+        
+            final int[] headerFieldOrder = {
+                BeginString.FIELD,
+                BodyLength.FIELD,
+                MsgType.FIELD,
+                TargetSubID.FIELD,
+                SendingTime.FIELD,
+                MsgSeqNum.FIELD,
+                SenderCompID.FIELD,
+                TargetCompID.FIELD
+            };
+
+            public MyMessage() {
+                super();
+                header = new Header(headerFieldOrder);
+            }
+            
+            @Override
+            public String toString() {
+                return super.toString();
+            }
+        }
+
+        final MyMessage myMessage = new MyMessage();
+        
+        myMessage.getHeader().setField(new SenderCompID("foo"));
+        myMessage.getHeader().setField(new MsgSeqNum(22));
+        myMessage.getHeader().setString(SendingTime.FIELD, "20120922-11:00:00");
+        myMessage.getHeader().setField(new TargetCompID("bar"));
+        
+        assertTrue(myMessage.toString().contains("52=20120922-11:00:00\00134=22\00149=foo\00156=bar"));
+    }
+
+    @Test
+    public void testTrailerCustomFieldOrdering() throws Exception {
+        
+        class MyMessage extends Message {
+        
+            final int[] trailerFieldOrder = { Signature.FIELD, SignatureLength.FIELD, CheckSum.FIELD };
+
+            public MyMessage() {
+                super();
+                trailer = new Trailer(trailerFieldOrder);
+            }
+            
+            @Override
+            public String toString() {
+                return super.toString();
+            }
+        }
+
+        final MyMessage myMessage = new MyMessage();
+        
+        myMessage.getTrailer().setField(new Signature("FOO"));
+        myMessage.getTrailer().setField(new SignatureLength(3));
+        assertTrue(myMessage.toString().contains("89=FOO\00193=3\001"));
     }
 
     @Test
@@ -187,22 +316,50 @@ public class MessageTest {
         dictionary.validate(executionReport);
     }
 
-    @Test // QFJ-426     Message header will not validate when containing 'Hop' group
-    public void testValidationWithHops() throws Exception {
-        String data = "8=FIX.4.49=30935=849=ASX56=CL1_FIX4434=452=20060324-01:05:58"
+    @Test
+    // QFJ-675: Message.clear() should reset position field to zero to enable Message to be reused
+    public void testParseTwice() throws Exception {
+        final String data1 = "8=FIX.4.49=30935=849=ASX56=CL1_FIX4434=452=20060324-01:05:58"
                 + "17=X-B-WOW-1494E9A0:58BD3F9D-1109150=D39=011=18427138=200198=1494E9A0:58BD3F9D"
                 + "526=432437=B-WOW-1494E9A0:58BD3F9D55=WOW54=1151=20014=040=244=1559=16=0"
                 + "453=3448=AAA35791447=D452=3448=8447=D452=4448=FIX11447=D452=36"
                 + "60=20060320-03:34:2910=169";
-        ExecutionReport executionReport = new ExecutionReport();
-        DataDictionary dictionary = DataDictionaryTest.getDictionary();
+
+        final String data2 = "8=FIX.4.49=30935=849=ASX56=CL1_FIX4434=452=20060324-01:05:58"
+                + "17=X-B-WOW-1494E9A0:58BD3F9D-1109150=D39=011=12345638=200198=1494E9A0:58BD3F9D"
+                + "526=432437=B-WOW-1494E9A0:58BD3F9D55=WOW54=1151=20014=040=244=1559=16=0"
+                + "453=3448=AAA35791447=D452=3448=8447=D452=4448=FIX11447=D452=36"
+                + "60=20060320-03:34:2910=167";
+
+        final DataDictionary dictionary = DataDictionaryTest.getDictionary();
+        final ExecutionReport executionReport = new ExecutionReport();
+
         assertNotNull(dictionary);
+        executionReport.fromString(data1, dictionary, true);
+        dictionary.validate(executionReport);
         
+        executionReport.clear();
+        executionReport.fromString(data2, dictionary, true);
+        dictionary.validate(executionReport);
+    }
+
+    @Test
+    // QFJ-426     Message header will not validate when containing 'Hop' group
+    public void testValidationWithHops() throws Exception {
+        final String data = "8=FIX.4.49=30935=849=ASX56=CL1_FIX4434=452=20060324-01:05:58"
+                + "17=X-B-WOW-1494E9A0:58BD3F9D-1109150=D39=011=18427138=200198=1494E9A0:58BD3F9D"
+                + "526=432437=B-WOW-1494E9A0:58BD3F9D55=WOW54=1151=20014=040=244=1559=16=0"
+                + "453=3448=AAA35791447=D452=3448=8447=D452=4448=FIX11447=D452=36"
+                + "60=20060320-03:34:2910=169";
+        final ExecutionReport executionReport = new ExecutionReport();
+        final DataDictionary dictionary = DataDictionaryTest.getDictionary();
+        assertNotNull(dictionary);
+
         executionReport.fromString(data, dictionary, true);
-        Header.NoHops hops = new Header.NoHops();
+        final Header.NoHops hops = new Header.NoHops();
         hops.set(new HopCompID("FOO"));
         executionReport.header.addGroup(hops);
-        
+
         dictionary.validate(executionReport);
     }
 
@@ -468,8 +625,9 @@ public class MessageTest {
                 .create(dataDictionary.getVersion(), "D");
         message.fromString(expectedMessageString, dataDictionary, false);
         final String actualMessageString = message.toString();
-        assertTrue("wrong field ordering", actualMessageString
-                .indexOf("453=2448=8447=D452=4448=AAA35354447=D452=3") != -1);
+        assertTrue(
+                "wrong field ordering",
+                actualMessageString.indexOf("453=2448=8447=D452=4448=AAA35354447=D452=3") != -1);
     }
 
     @Test
@@ -496,8 +654,8 @@ public class MessageTest {
         assertEquals(212, message.getException().getField());
     }
 
-   @Test
-   public void testTrailerFieldInBody() throws Exception {
+    @Test
+    public void testTrailerFieldInBody() throws Exception {
         final Message message = new Message("8=FIX.4.2\0019=40\00135=A\001"
                 + "98=0\00193=5\001384=2\001372=D\001385=R\001372=8\001385=S\00110=63\001",
                 DataDictionaryTest.getDictionary());
@@ -537,12 +695,13 @@ public class MessageTest {
         assertGroupContent(message, numAllocs);
     }
 
+    // Includes test for QFJ-413. Repeating group check for size = 0
     @Test
     public void testMessageGroupCountValidation() throws Exception {
         final String data = "8=FIX.4.49=22235=D49=SenderCompId56=TargetCompId34=3752=20070223-22:28:33"
                 + "11=18333922=838=140=244=1248=BHP54=255=BHP59=1"
-                + "60=20060223-22:38:33526=362078=379=AllocACC180=1010.1"
-                + "79=AllocACC280=2020.2453=2448=8447=D452=4448=AAA35354447=D452=310=082";
+                + "60=20060223-22:38:33526=362078=079=AllocACC180=1010.1"
+                + "79=AllocACC280=2020.2453=2448=8447=D452=4448=AAA35354447=D452=310=079";
         final Message message = new Message();
         final DataDictionary dd = DataDictionaryTest.getDictionary();
         message.fromString(data, dd, true);
@@ -576,15 +735,13 @@ public class MessageTest {
         message.addGroup(partyIdGroup);
         final Message clonedMessage = (Message) message.clone();
         assertEquals("wrong field order",
-                "8=FIX.4.49=3535=D453=1448=PARTY_1447=I452=610=040", clonedMessage
-                        .toString());
+                "8=FIX.4.49=3535=D453=1448=PARTY_1447=I452=610=040",
+                clonedMessage.toString());
     }
 
     @Test
     public void testMessageGroupRemovalUsingGroupObject() {
         final Message message = new Message();
-        final int length = message.calculateLength();
-        final int messageFieldWithZeroLengthGroup = length + "79=0\001".length();
 
         NewOrderSingle.NoAllocs numAllocs = setUpGroups(message);
 
@@ -595,9 +752,9 @@ public class MessageTest {
         message.removeGroup(numAllocs);
 
         assertEquals("wrong # of group members", 0, message.getGroupCount(numAllocs.getFieldTag()));
-        assertZeroLengthField(message);
-        assertEquals("wrong message length", messageFieldWithZeroLengthGroup, message
-                .calculateLength());
+
+        assertNoZeroLengthGroupTag(message);
+        assertEquals("wrong message length", 0, message.calculateLength());
 
         // Remove one at a time
 
@@ -611,22 +768,14 @@ public class MessageTest {
         message.removeGroup(1, numAllocs);
 
         assertEquals("wrong # of group members", 0, message.getGroupCount(numAllocs.getFieldTag()));
-        assertZeroLengthField(message);
-        assertEquals("wrong message length", messageFieldWithZeroLengthGroup, message
-                .calculateLength());
-    }
 
-    private void assertZeroLengthField(Message message) {
-        assertTrue("Incorrect length in message.toString()", message.toString()
-                .contains("\00178=0"));
+        assertNoZeroLengthGroupTag(message);
+        assertEquals("wrong message length", 0, message.calculateLength());
     }
 
     @Test
     public void testMessageGroupRemovalUsingGroupFieldTag() {
         final Message message = new Message();
-        final int length = message.calculateLength();
-        final int messageFieldWithZeroLengthGroup = length + "79=0\001".length();
-        final int expectedTotalWithZeroLengthGroup = new IntField(78, 0).getTotal();
 
         NewOrderSingle.NoAllocs numAllocs = setUpGroups(message);
 
@@ -637,10 +786,11 @@ public class MessageTest {
         message.removeGroup(numAllocs.getFieldTag());
 
         assertEquals("wrong # of group members", 0, message.getGroupCount(numAllocs.getFieldTag()));
-        assertZeroLengthField(message);
-        assertEquals("wrong message length", messageFieldWithZeroLengthGroup, message
-                .calculateLength());
-        assertEquals("wrong total", expectedTotalWithZeroLengthGroup, message.calculateTotal());
+
+        assertNoZeroLengthGroupTag(message);
+        assertEquals("wrong message length", 0, message.calculateLength());
+
+        assertEquals("wrong total", 0, message.calculateTotal());
 
         // Remove one at a time
 
@@ -655,18 +805,16 @@ public class MessageTest {
         message.removeGroup(1, numAllocs.getFieldTag());
 
         assertEquals("wrong # of group members", 0, message.getGroupCount(numAllocs.getFieldTag()));
-        assertZeroLengthField(message);
-        assertEquals("wrong message length", messageFieldWithZeroLengthGroup, message
-                .calculateLength());
-        assertEquals("wrong total", expectedTotalWithZeroLengthGroup, message.calculateTotal());
+
+        assertNoZeroLengthGroupTag(message);
+        assertEquals("wrong message length", 0, message.calculateLength());
+
+        assertEquals("wrong total", 0, message.calculateTotal());
     }
 
     @Test
     public void testMessageGroupRemovalFromEmptyGroup() {
         final Message message = new Message();
-        final int length = message.calculateLength();
-        final int messageFieldWithZeroLengthGroup = length + "79=0\001".length();
-        final int expectedTotalWithZeroLengthGroup = new IntField(78, 0).getTotal();
         final NewOrderSingle.NoAllocs numAllocs = setUpGroups(message);
         message.removeGroup(numAllocs);
 
@@ -674,10 +822,14 @@ public class MessageTest {
         message.removeGroup(1, numAllocs);
 
         assertEquals("wrong # of group members", 0, message.getGroupCount(numAllocs.getFieldTag()));
-        assertZeroLengthField(message);
-        assertEquals("wrong message length", messageFieldWithZeroLengthGroup, message
-                .calculateLength());
-        assertEquals("wrong total", expectedTotalWithZeroLengthGroup, message.calculateTotal());
+
+        assertNoZeroLengthGroupTag(message);
+        assertEquals("wrong message length", 0, message.calculateLength());
+    }
+
+    private void assertNoZeroLengthGroupTag(final Message message) {
+        assertFalse("Zero-length group tag exists in message string",
+                message.toString().contains("\00178="));
     }
 
     @Test
@@ -758,8 +910,8 @@ public class MessageTest {
         }
     }
 
-   @Test
-   public void testMessageSetGetChar() {
+    @Test
+    public void testMessageSetGetChar() {
         final Message message = new Message();
 
         try {
@@ -1047,13 +1199,53 @@ public class MessageTest {
     public void testFalseMessageStructureException2() {
         try {
             final DataDictionary dd = DataDictionaryTest.getDictionary();
-            // duplicated raw data length 
+            // duplicated raw data length
             // QFJ-121
             new Message("8=FIX.4.4\0019=22\00135=A\00196=X\001108=30\00110=223\001", dd, true);
         } catch (final Exception e) {
             final String text = e.getMessage();
-            assertTrue("Wrong exception message: " + text, text != null
-                    && text.indexOf("Actual body length") == -1);
+            assertTrue("Wrong exception message: " + text,
+                    text != null && text.indexOf("Actual body length") == -1);
+        }
+    }
+
+    @Test
+    public void testFieldWithEqualsCharacter() {
+        try {
+            final DataDictionary dd = DataDictionaryTest.getDictionary();
+            final Message m = new Message(
+                    "8=FIXT.1.1\0019=369\00135=W\00149=I\00156=F\00134=4\00152=20111021-15:09:16.535\001262=1319209757316210\00121=2\00155=EUR/USD\001461=RCSXX=0\001268=8\001269=0\001270=1.38898\001271=2000000\001269=0\001270=1.38897\001271=8000000\001269=0\001270=1.38854\001271=2000000\001269=1\001270=1.38855\001271=6000000\001269=1\001270=1.38856\001271=7000000\001269=1\001270=1.38857\001271=3000000\001269=1\001270=1.38858\001271=9000000\001269=1\001270=1.38859\001271=100000000\00110=51\001",
+                    dd, true);
+            assertEquals(m.getString(461), "RCSXX=0");
+            final MarketDataSnapshotFullRefresh.NoMDEntries group = new MarketDataSnapshotFullRefresh.NoMDEntries();
+            m.getGroup(1, group);
+            final MDEntryPx px = new MDEntryPx();
+            group.get(px);
+            assertEquals(px.objectAsString(), "1.38898");
+        } catch (final Exception e) {
+            final String text = e.getMessage();
+            assertTrue("Wrong exception message: " + text,
+                    text != null && text.indexOf("Actual body length") == -1);
+        }
+    }
+
+    @Test
+    public void testMiscFeeType() {
+        try {
+            final DataDictionary dd = DataDictionaryTest.getDictionary();
+            final Message m = new Message(
+                    "8=FIXT.1.1\0019=369\00135=W\00149=I\00156=F\00134=4\00152=20111021-15:09:16.535\001262=1319209757316210\00121=2\00155=EUR/USD\001461=RCSXX=0\001268=8\001269=0\001270=1.38898\001271=2000000\001269=0\001270=1.38897\001271=8000000\001269=0\001270=1.38854\001271=2000000\001269=1\001270=1.38855\001271=6000000\001269=1\001270=1.38856\001271=7000000\001269=1\001270=1.38857\001271=3000000\001269=1\001270=1.38858\001271=9000000\001269=1\001270=1.38859\001271=100000000\00110=51\001",
+                    dd, true);
+            assertEquals(m.getString(461), "RCSXX=0");
+            final MarketDataSnapshotFullRefresh.NoMDEntries group = new MarketDataSnapshotFullRefresh.NoMDEntries();
+            m.getGroup(1, group);
+            final MDEntryPx px = new MDEntryPx();
+            group.get(px);
+            assertEquals(px.objectAsString(), "1.38898");
+        } catch (final Exception e) {
+            final String text = e.getMessage();
+            assertTrue("Wrong exception message: " + text,
+                    text != null && text.indexOf("Actual body length") == -1);
         }
     }
 
@@ -1137,11 +1329,11 @@ public class MessageTest {
 
     private void assertAllocation(String accountId, Object shares) {
         if (accountId.equals("AllocACC1")) {
-            assertEquals("got shares: " + shares, 0, new BigDecimal("1010.10")
-                    .compareTo(new BigDecimal(shares.toString())));
+            assertEquals("got shares: " + shares, 0,
+                    new BigDecimal("1010.10").compareTo(new BigDecimal(shares.toString())));
         } else if (accountId.equals("AllocACC2")) {
-            assertEquals("got shares: " + shares, 0, new BigDecimal("2020.20")
-                    .compareTo(new BigDecimal(shares.toString())));
+            assertEquals("got shares: " + shares, 0,
+                    new BigDecimal("2020.20").compareTo(new BigDecimal(shares.toString())));
         } else {
             fail("Unknown account");
         }

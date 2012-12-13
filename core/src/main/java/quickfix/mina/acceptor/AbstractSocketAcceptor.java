@@ -1,19 +1,19 @@
 /*******************************************************************************
- * Copyright (c) quickfixengine.org  All rights reserved. 
- * 
- * This file is part of the QuickFIX FIX Engine 
- * 
- * This file may be distributed under the terms of the quickfixengine.org 
- * license as defined by quickfixengine.org and appearing in the file 
- * LICENSE included in the packaging of this file. 
- * 
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING 
- * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A 
- * PARTICULAR PURPOSE. 
- * 
- * See http://www.quickfixengine.org/LICENSE for licensing information. 
- * 
- * Contact ask@quickfixengine.org if any conditions of this licensing 
+ * Copyright (c) quickfixengine.org  All rights reserved.
+ *
+ * This file is part of the QuickFIX FIX Engine
+ *
+ * This file may be distributed under the terms of the quickfixengine.org
+ * license as defined by quickfixengine.org and appearing in the file
+ * LICENSE included in the packaging of this file.
+ *
+ * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+ * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE.
+ *
+ * See http://www.quickfixengine.org/LICENSE for licensing information.
+ *
+ * Contact ask@quickfixengine.org if any conditions of this licensing
  * are not clear to you.
  ******************************************************************************/
 
@@ -69,8 +69,7 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
     private final Map<SocketAddress, AcceptorSessionProvider> sessionProviders = new HashMap<SocketAddress, AcceptorSessionProvider>();
     private final SessionFactory sessionFactory;
     private final Map<SocketAddress, AcceptorSocketDescriptor> socketDescriptorForAddress = new HashMap<SocketAddress, AcceptorSocketDescriptor>();
-    private final Map<TransportType, IoAcceptor> ioAcceptorForTransport = new HashMap<TransportType, IoAcceptor>();
-    private EventHandlingStrategy eventHandlingStrategy;
+    private final Map<TransportTypeAndSSL, IoAcceptor> ioAcceptorForTransport = new HashMap<TransportTypeAndSSL, IoAcceptor>();
 
     protected AbstractSocketAcceptor(SessionSettings settings, SessionFactory sessionFactory)
             throws ConfigError {
@@ -78,11 +77,6 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
         ByteBuffer.setAllocator(new SimpleByteBufferAllocator());
         ByteBuffer.setUseDirectBuffers(false);
         this.sessionFactory = sessionFactory;
-        try {
-            createSessions(settings);
-        } catch (FieldConvertError e) {
-            throw new ConfigError(e);
-        }
     }
 
     protected AbstractSocketAcceptor(Application application,
@@ -100,10 +94,9 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
     }
 
     // TODO SYNC Does this method really need synchronization?
-    protected synchronized void startAcceptingConnections(
-            EventHandlingStrategy eventHandlingStrategy) throws ConfigError {
+    protected synchronized void startAcceptingConnections() throws ConfigError {
         try {
-            this.eventHandlingStrategy = eventHandlingStrategy;
+            createSessions(getSettings());
             startSessionTimer();
             SessionSettings settings = getSettings();
 
@@ -111,13 +104,14 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
             while (descriptors.hasNext()) {
                 AcceptorSocketDescriptor socketDescriptor = descriptors
                         .next();
-                IoAcceptor ioAcceptor = getIoAcceptor(socketDescriptor.getAddress());
+                SocketAddress address = socketDescriptor.getAddress();
+                boolean useSSL = socketDescriptor.isUseSSL();
+                IoAcceptor ioAcceptor = getIoAcceptor(address, useSSL);
                 IoServiceConfig serviceConfig = ioAcceptor.getDefaultConfig();
-                
                 CompositeIoFilterChainBuilder ioFilterChainBuilder = new CompositeIoFilterChainBuilder(
                         getIoFilterChainBuilder());
 
-                if (socketDescriptor.isUseSSL()) {
+                if (useSSL) {
                     installSSL(socketDescriptor, ioFilterChainBuilder);
                 }
 
@@ -128,20 +122,21 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
                 serviceConfig.setThreadModel(ThreadModel.MANUAL);
 
                 AcceptorSessionProvider sessionProvider = sessionProviders
-                        .get(socketDescriptor.getAddress());
+                        .get(address);
                 if (sessionProvider == null) {
-                    sessionProvider = new StaticAcceptorSessionProvider(socketDescriptor
+                    sessionProvider = new DefaultAcceptorSessionProvider(socketDescriptor
                             .getAcceptedSessions());
                 }
 
                 if (serviceConfig instanceof SocketAcceptorConfig) {
                     ((SocketAcceptorConfig)serviceConfig).setDisconnectOnUnbind(false);
                 }
-                
-                ioAcceptor.bind(socketDescriptor.getAddress(), new AcceptorIoHandler(
+
+                ioAcceptor.bind(address, new AcceptorIoHandler(
                         sessionProvider, new NetworkingOptions(settings.getDefaultProperties()),
-                        eventHandlingStrategy));
-                log.info("Listening for connections at " + socketDescriptor.getAddress());
+                        getEventHandlingStrategy()));
+                log.info("Listening for connections at " + address + " for session(s) "
+                        + socketDescriptor.getAcceptedSessions().keySet());
             }
         } catch (FieldConvertError e) {
             throw new ConfigError(e);
@@ -160,12 +155,13 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
         ioFilterChainBuilder.addLast(SSLSupport.FILTER_NAME, sslFilter);
     }
 
-    private IoAcceptor getIoAcceptor(SocketAddress address) {
+    private IoAcceptor getIoAcceptor(SocketAddress address, boolean useSSL) {
         TransportType transportType = ProtocolFactory.getAddressTransportType(address);
-        IoAcceptor ioAcceptor = ioAcceptorForTransport.get(transportType);
+        TransportTypeAndSSL key = new TransportTypeAndSSL(transportType, useSSL);
+        IoAcceptor ioAcceptor = ioAcceptorForTransport.get(key);
         if (ioAcceptor == null) {
             ioAcceptor = ProtocolFactory.createIoAcceptor(transportType);
-            ioAcceptorForTransport.put(transportType, ioAcceptor);
+            ioAcceptorForTransport.put(key, ioAcceptor);
         }
         return ioAcceptor;
     }
@@ -237,12 +233,12 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
             SessionID sessionID = (SessionID) i.next();
             String connectionType = settings.getString(sessionID,
                     SessionFactory.SETTING_CONNECTION_TYPE);
-            
+
             boolean isTemplate = false;
             if (settings.isSetting(sessionID, Acceptor.SETTING_ACCEPTOR_TEMPLATE)) {
                 isTemplate = settings.getBool(sessionID, Acceptor.SETTING_ACCEPTOR_TEMPLATE);
             }
-            
+
             if (connectionType.equals(SessionFactory.ACCEPTOR_CONNECTION_TYPE)) {
                 AcceptorSocketDescriptor descriptor = getAcceptorSocketDescriptor(settings, sessionID);
                 if (!isTemplate) {
@@ -266,7 +262,7 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
                     .next();
             SocketAddress acceptorSocketAddress = socketDescriptor.getAddress();
             log.info("No longer accepting connections on " + acceptorSocketAddress);
-            IoAcceptor ioAcceptor = getIoAcceptor(acceptorSocketAddress);
+            IoAcceptor ioAcceptor = getIoAcceptor(acceptorSocketAddress, socketDescriptor.isUseSSL());
             if (ioAcceptor.isManaged(acceptorSocketAddress)) {
                 ioAcceptor.unbind(acceptorSocketAddress);
             }
@@ -349,7 +345,84 @@ public abstract class AbstractSocketAcceptor extends SessionConnector implements
     }
 
     public int getQueueSize() {
-        return eventHandlingStrategy == null ? 0 : eventHandlingStrategy.getQueueSize();
+        final EventHandlingStrategy ehs = getEventHandlingStrategy();
+        return ehs == null ? 0 : ehs.getQueueSize();
     }
 
+    protected abstract EventHandlingStrategy getEventHandlingStrategy() ;
+
+    private class DefaultAcceptorSessionProvider
+        implements AcceptorSessionProvider
+    {
+        private final Map<SessionID,Session> acceptorSessions;
+
+        public DefaultAcceptorSessionProvider(Map<SessionID, Session> acceptorSessions)
+        {
+            this.acceptorSessions = acceptorSessions;
+        }
+
+        public Session getSession(SessionID sessionID, SessionConnector ignored)
+        {
+            Session session = acceptorSessions.get(sessionID);
+            if(session == null)
+                session = acceptorSessions.get(reduceSessionID(sessionID));
+            return session;
+        }
+
+        /**
+         * Remove the extra fields added to the session ID in QF-272.
+         */
+        private SessionID reduceSessionID(SessionID sessionID)
+        {
+            // Acceptors don't use qualifiers.
+            return new SessionID(sessionID.getBeginString(), sessionID.getSenderCompID(), sessionID.getTargetCompID());
+        }
+    }
+    
+    private class TransportTypeAndSSL {
+
+        private final TransportType transportType;
+        private final boolean useSSL;
+        
+        public TransportTypeAndSSL(final TransportType transportType, final boolean useSSL ) {
+            this.transportType = transportType;
+            this.useSSL = useSSL;
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + getOuterType().hashCode();
+            result = prime * result + ((transportType == null) ? 0 : transportType.hashCode());
+            result = prime * result + (useSSL ? 1231 : 1237);
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            TransportTypeAndSSL other = (TransportTypeAndSSL) obj;
+            if (!getOuterType().equals(other.getOuterType()))
+                return false;
+            if (transportType == null) {
+                if (other.transportType != null)
+                    return false;
+            } else if (!transportType.equals(other.transportType))
+                return false;
+            if (useSSL != other.useSSL)
+                return false;
+            return true;
+        }
+
+        private AbstractSocketAcceptor getOuterType() {
+            return AbstractSocketAcceptor.this;
+        }
+
+    }
 }

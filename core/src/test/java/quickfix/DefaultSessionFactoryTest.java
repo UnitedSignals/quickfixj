@@ -93,9 +93,9 @@ public class DefaultSessionFactoryTest {
         assertThat(provider.getSessionDataDictionary(sessionID.getBeginString()),
                 is(notNullValue()));
 
-        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX42), null),
+        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX42)),
                 is(notNullValue()));
-        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX40), null),
+        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX40)),
                 is(notNullValue()));
     }
 
@@ -108,7 +108,7 @@ public class DefaultSessionFactoryTest {
         DataDictionaryProvider provider = session.getDataDictionaryProvider();
         assertThat(provider.getSessionDataDictionary(sessionID.getBeginString()),
                 is(notNullValue()));
-        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX42), null),
+        assertThat(provider.getApplicationDataDictionary(new ApplVerID(ApplVerID.FIX42)),
                 is(notNullValue()));
     }
 
@@ -211,4 +211,13 @@ public class DefaultSessionFactoryTest {
         settings.setString(sessionID, Session.SETTING_HEARTBTINT, "10");
         settings.setString(sessionID, "BeginString", "FIX.4.2");
     }
+    
+
+    //QFJ-629
+    @Test
+    public void testReconnectIntervalInDefaultSession() throws Exception {
+        settings.setString(sessionID, "ReconnectInterval", "2x5;3x15");
+        factory.create(sessionID, settings);
+    }
+
 }

@@ -1,19 +1,19 @@
 /*******************************************************************************
- * Copyright (c) quickfixengine.org  All rights reserved. 
- * 
- * This file is part of the QuickFIX FIX Engine 
- * 
- * This file may be distributed under the terms of the quickfixengine.org 
- * license as defined by quickfixengine.org and appearing in the file 
- * LICENSE included in the packaging of this file. 
- * 
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING 
- * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A 
- * PARTICULAR PURPOSE. 
- * 
- * See http://www.quickfixengine.org/LICENSE for licensing information. 
- * 
- * Contact ask@quickfixengine.org if any conditions of this licensing 
+ * Copyright (c) quickfixengine.org  All rights reserved.
+ *
+ * This file is part of the QuickFIX FIX Engine
+ *
+ * This file may be distributed under the terms of the quickfixengine.org
+ * license as defined by quickfixengine.org and appearing in the file
+ * LICENSE included in the packaging of this file.
+ *
+ * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+ * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE.
+ *
+ * See http://www.quickfixengine.org/LICENSE for licensing information.
+ *
+ * Contact ask@quickfixengine.org if any conditions of this licensing
  * are not clear to you.
  ******************************************************************************/
 
@@ -21,6 +21,7 @@ package quickfix;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -44,10 +45,10 @@ import quickfix.field.converter.UtcTimestampConverter;
  * File store implementation. THIS CLASS IS PUBLIC ONLY TO MAINTAIN
  * COMPATIBILITY WITH THE QUICKFIX JNI. IT SHOULD ONLY BE CREATED USING A
  * FACTORY.
- * 
+ *
  * @see quickfix.FileStoreFactory
  */
-public class FileStore implements MessageStore {
+public class FileStore implements MessageStore, Closeable {
     private static final String READ_OPTION = "r";
     private static final String WRITE_OPTION = "w";
     private static final String SYNC_OPTION = "d";
@@ -58,7 +59,8 @@ public class FileStore implements MessageStore {
 
     private final String msgFileName;
     private final String headerFileName;
-    private final String seqNumFileName;
+    private final String senderSeqNumFileName;
+    private final String targetSeqNumFileName;
     private final String sessionFileName;
     private final boolean syncWrites;
     private final int maxCachedMsgs;
@@ -67,7 +69,8 @@ public class FileStore implements MessageStore {
     private RandomAccessFile messageFileWriter;
     private DataOutputStream headerDataOutputStream;
     private FileOutputStream headerFileOutputStream;
-    private RandomAccessFile sequenceNumberFile;
+    private RandomAccessFile senderSequenceNumberFile;
+    private RandomAccessFile targetSequenceNumberFile;
 
     FileStore(String path, SessionID sessionID, boolean syncWrites, int maxCachedMsgs)
             throws IOException {
@@ -86,7 +89,8 @@ public class FileStore implements MessageStore {
 
         msgFileName = prefix + "body";
         headerFileName = prefix + "header";
-        seqNumFileName = prefix + "seqnums";
+        senderSeqNumFileName = prefix + "senderseqnums";
+        targetSeqNumFileName = prefix + "targetseqnums";
         sessionFileName = prefix + "session";
 
         final File directory = new File(msgFileName).getParentFile();
@@ -106,7 +110,8 @@ public class FileStore implements MessageStore {
 
         messageFileWriter = new RandomAccessFile(msgFileName, getRandomAccessFileOptions());
         messageFileReader = new RandomAccessFile(msgFileName, READ_OPTION);
-        sequenceNumberFile = new RandomAccessFile(seqNumFileName, getRandomAccessFileOptions());
+        senderSequenceNumberFile = new RandomAccessFile(senderSeqNumFileName, getRandomAccessFileOptions());
+        targetSequenceNumberFile = new RandomAccessFile(targetSeqNumFileName, getRandomAccessFileOptions());
 
         initializeCache();
     }
@@ -121,7 +126,7 @@ public class FileStore implements MessageStore {
 
     private void initializeSessionCreateTime() throws IOException {
         final File sessionTimeFile = new File(sessionFileName);
-        if (sessionTimeFile.exists()) {
+        if (sessionTimeFile.exists() && sessionTimeFile.length() > 0) {
             final DataInputStream sessionTimeInput = new DataInputStream(new BufferedInputStream(
                     new FileInputStream(sessionTimeFile)));
             try {
@@ -158,16 +163,15 @@ public class FileStore implements MessageStore {
     }
 
     private void initializeSequenceNumbers() throws IOException {
-        sequenceNumberFile.seek(0);
-        if (sequenceNumberFile.length() > 0) {
-            final String s = sequenceNumberFile.readUTF();
-            final int offset = s.indexOf(':');
-            if (offset < 0) {
-                throw new IOException("Invalid sequenceNumbderFile '" + seqNumFileName
-                        + "' character ':' is missing");
-            }
-            cache.setNextSenderMsgSeqNum(Integer.parseInt(s.substring(0, offset)));
-            cache.setNextTargetMsgSeqNum(Integer.parseInt(s.substring(offset + 1)));
+        senderSequenceNumberFile.seek(0);
+        targetSequenceNumberFile.seek(0);
+        if (senderSequenceNumberFile.length() > 0) {
+            final String s = senderSequenceNumberFile.readUTF();
+            cache.setNextSenderMsgSeqNum(Integer.parseInt(s));
+        }
+        if (targetSequenceNumberFile.length() > 0) {
+            final String s = targetSequenceNumberFile.readUTF();
+            cache.setNextTargetMsgSeqNum(Integer.parseInt(s));
         }
     }
 
@@ -214,13 +218,24 @@ public class FileStore implements MessageStore {
 
     /**
      * Close the store's files.
+     * @deprecated use close instead
      * @throws IOException
      */
+    @Deprecated
     public void closeFiles() throws IOException {
+        close();
+    }
+
+    /**
+     * Close the store's files.
+     * @throws IOException
+     */
+    public void close() throws IOException {
         closeOutputStream(headerDataOutputStream);
         closeFile(messageFileWriter);
         closeFile(messageFileReader);
-        closeFile(sequenceNumberFile);
+        closeFile(senderSequenceNumberFile);
+        closeFile(targetSequenceNumberFile);
     }
 
     private void closeFile(RandomAccessFile file) throws IOException {
@@ -236,10 +251,11 @@ public class FileStore implements MessageStore {
     }
 
     public void deleteFiles() throws IOException {
-        closeFiles();
+        close();
         deleteFile(headerFileName);
         deleteFile(msgFileName);
-        deleteFile(seqNumFileName);
+        deleteFile(senderSeqNumFileName);
+        deleteFile(targetSeqNumFileName);
         deleteFile(sessionFileName);
     }
 
@@ -269,7 +285,7 @@ public class FileStore implements MessageStore {
      */
     public void setNextSenderMsgSeqNum(int next) throws IOException {
         cache.setNextSenderMsgSeqNum(next);
-        storeSequenceNumbers();
+        storeSenderSequenceNumber();
     }
 
     /* (non-Javadoc)
@@ -277,7 +293,7 @@ public class FileStore implements MessageStore {
      */
     public void setNextTargetMsgSeqNum(int next) throws IOException {
         cache.setNextTargetMsgSeqNum(next);
-        storeSequenceNumbers();
+        storeTargetSequenceNumber();
     }
 
     /* (non-Javadoc)
@@ -285,7 +301,7 @@ public class FileStore implements MessageStore {
      */
     public void incrNextSenderMsgSeqNum() throws IOException {
         cache.incrNextSenderMsgSeqNum();
-        storeSequenceNumbers();
+        storeSenderSequenceNumber();
     }
 
     /* (non-Javadoc)
@@ -293,7 +309,7 @@ public class FileStore implements MessageStore {
      */
     public void incrNextTargetMsgSeqNum() throws IOException {
         cache.incrNextTargetMsgSeqNum();
-        storeSequenceNumbers();
+        storeTargetSequenceNumber();
     }
 
     /* (non-Javadoc)
@@ -343,10 +359,10 @@ public class FileStore implements MessageStore {
     }
 
     /**
-     * This method is here for JNI API consistency but it's not 
-     * implemented. Use get(int, int, Collection) with the same 
+     * This method is here for JNI API consistency but it's not
+     * implemented. Use get(int, int, Collection) with the same
      * start and end sequence.
-     * 
+     *
      */
     public boolean get(int sequence, String message) throws IOException {
         throw new UnsupportedOperationException("not supported");
@@ -399,14 +415,14 @@ public class FileStore implements MessageStore {
         return true;
     }
 
-    private void storeSequenceNumbers() throws IOException {
-        sequenceNumberFile.seek(0);
-        // I changed this from explicitly using a StringBuffer because of
-        // recommendations from Sun. The performance also appears higher
-        // with this implementation. -- smb.
-        // http://bugs.sun.com/bugdatabase/view_bug.do;:WuuT?bug_id=4259569
-        sequenceNumberFile.writeUTF("" + cache.getNextSenderMsgSeqNum() + ':'
-                + cache.getNextTargetMsgSeqNum());
+    private void storeSenderSequenceNumber() throws IOException {
+        senderSequenceNumberFile.seek(0);
+        senderSequenceNumberFile.writeUTF("" + cache.getNextSenderMsgSeqNum());
+    }
+
+    private void storeTargetSequenceNumber() throws IOException {
+        targetSequenceNumberFile.seek(0);
+        targetSequenceNumberFile.writeUTF("" + cache.getNextTargetMsgSeqNum());
     }
 
     String getHeaderFileName() {
@@ -417,8 +433,12 @@ public class FileStore implements MessageStore {
         return msgFileName;
     }
 
-    String getSeqNumFileName() {
-        return seqNumFileName;
+    String getSeqNumSenderFileName() {
+        return senderSeqNumFileName;
+    }
+
+    String getSeqNumTargetFileName() {
+        return targetSeqNumFileName;
     }
 
     /*

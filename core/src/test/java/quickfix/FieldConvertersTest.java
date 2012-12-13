@@ -40,6 +40,7 @@ public class FieldConvertersTest extends TestCase {
         assertEquals("123", IntConverter.convert(123));
         assertEquals(123, IntConverter.convert("123"));
         assertEquals(-1, IntConverter.convert("-1"));
+        assertEquals(23, IntConverter.convert("00023"));
         try {
             IntConverter.convert("abc");
             fail();
@@ -76,9 +77,16 @@ public class FieldConvertersTest extends TestCase {
         assertEquals(0, DoubleConverter.convert(".0"), 0);
         assertEquals(0.06, DoubleConverter.convert("000.06"), 0);
         assertEquals(0.06, DoubleConverter.convert("0.0600"), 0);
+        assertEquals(23.0, DoubleConverter.convert("00023."), 0);
 
         try {
             DoubleConverter.convert("abc");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            DoubleConverter.convert("+200");
             fail();
         } catch (FieldConvertError e) {
             // expected
@@ -95,7 +103,18 @@ public class FieldConvertersTest extends TestCase {
         } catch (FieldConvertError e) {
             // expected
         }
-        
+        try {
+            DoubleConverter.convert("1E6");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            DoubleConverter.convert("1e6");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
         assertEquals("1.500", DoubleConverter.convert(1.5, 3));
         assertEquals("45.00000", DoubleConverter.convert(45, 5));
         assertEquals("5.00", DoubleConverter.convert(5, 2));
@@ -112,6 +131,12 @@ public class FieldConvertersTest extends TestCase {
         assertEquals('a', CharConverter.convert("a"));
         assertEquals('1', CharConverter.convert("1"));
         assertEquals('F', CharConverter.convert("F"));
+        try {
+            CharConverter.convert("");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
         try {
             CharConverter.convert("a1");
             fail();
@@ -163,6 +188,30 @@ public class FieldConvertersTest extends TestCase {
         } catch (FieldConvertError e) {
             // expected
         }
+        try {
+            UtcTimestampConverter.convert("200004261-2:05:06.555");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcTimestampConverter.convert("20000426-1205:06.555");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcTimestampConverter.convert("20000426-12:0506.555");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcTimestampConverter.convert("20000426-12:05:06555");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
     }
 
     public void testUtcTimeOnlyConversion() throws Exception {
@@ -207,7 +256,31 @@ public class FieldConvertersTest extends TestCase {
         assertEquals(3, c.get(Calendar.MONTH));
         assertEquals(26, c.get(Calendar.DAY_OF_MONTH));
         try {
+            UtcDateOnlyConverter.convert("b000042b");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcDateOnlyConverter.convert("2000042");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcDateOnlyConverter.convert("200004268");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
             UtcDateOnlyConverter.convert("2000042b");
+            fail();
+        } catch (FieldConvertError e) {
+            // expected
+        }
+        try {
+            UtcDateOnlyConverter.convert("200k0425");
             fail();
         } catch (FieldConvertError e) {
             // expected

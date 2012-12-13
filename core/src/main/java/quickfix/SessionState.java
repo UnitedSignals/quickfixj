@@ -1,19 +1,19 @@
 /*******************************************************************************
- * Copyright (c) quickfixengine.org  All rights reserved. 
- * 
- * This file is part of the QuickFIX FIX Engine 
- * 
- * This file may be distributed under the terms of the quickfixengine.org 
- * license as defined by quickfixengine.org and appearing in the file 
- * LICENSE included in the packaging of this file. 
- * 
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING 
- * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A 
- * PARTICULAR PURPOSE. 
- * 
- * See http://www.quickfixengine.org/LICENSE for licensing information. 
- * 
- * Contact ask@quickfixengine.org if any conditions of this licensing 
+ * Copyright (c) quickfixengine.org  All rights reserved.
+ *
+ * This file is part of the QuickFIX FIX Engine
+ *
+ * This file may be distributed under the terms of the quickfixengine.org
+ * license as defined by quickfixengine.org and appearing in the file
+ * LICENSE included in the packaging of this file.
+ *
+ * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+ * THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE.
+ *
+ * See http://www.quickfixengine.org/LICENSE for licensing information.
+ *
+ * Contact ask@quickfixengine.org if any conditions of this licensing
  * are not clear to you.
  ******************************************************************************/
 
@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -37,7 +38,7 @@ public final class SessionState {
 
     // MessageStore implementation must be thread safe
     private final MessageStore messageStore;
-    
+
     private final Lock senderMsgSeqNumLock = new ReentrantLock();
     private final Lock targetMsgSeqNumLock = new ReentrantLock();
 
@@ -53,14 +54,35 @@ public final class SessionState {
     private int testRequestCounter;
     private long lastSentTime;
     private long lastReceivedTime;
-    private boolean withinHeartBeat;
     private double testRequestDelayMultiplier;
     private long heartBeatMillis = Long.MAX_VALUE;
     private int heartBeatInterval;
-    private int[] resendRange = new int[] { 0, 0 };
+    /**
+     * The resend range when sending a resend request.
+     * If a gap is detected and messages from x to y are needed, the received messages are checked against the values x and y that are stored in the resendRange.
+     * Some FIX Engine do not support resendRequest range greater than a given value. There, in this case, the ResendRequest have to be splitted.
+     * E.g.: CME will reject any resend request for more than 2500 messages
+     * The solution is to send resend request with smaller range until the global range has been requested.
+     *
+     * the resendRange contains 3 values:
+     * <ol>
+     * <li>the begin index of the global resend request</li>
+     * <li>the last index of the global resend request</li>
+     * <li>the actual last index of the splitted sub resend request</li>
+     * </ol>
+     */
+    private int[] resendRange = new int[] { 0, 0, 0 };
     private boolean resetSent;
     private boolean resetReceived;
     private String logoutReason;
+
+    /*
+     * If this is anything other than zero it's the value of the 789/NextExpectedMsgSeqNum tag in the last Logon message sent.
+     * It is used to determine if the recipient has enough information (assuming they support 789) to avoid the need
+     * for a resend request i.e. they should be resending any necessary missing messages already. This value is used
+     * to populate the resendRange if necessary.
+     */
+    private final AtomicInteger nextExpectedMsgSeqNum = new AtomicInteger(0);
 
     // The messageQueue should be accessed from a single thread
     private final Map<Integer, Message> messageQueue = new LinkedHashMap<Integer, Message>();
@@ -284,12 +306,6 @@ public final class SessionState {
         return millisSinceLastReceivedTime >= 2.4 * getHeartBeatMillis();
     }
 
-    public boolean isWithinHeartBeat() {
-        synchronized (lock) {
-            return withinHeartBeat;
-        }
-    }
-
     public boolean set(int sequence, String message) throws IOException {
         return messageStore.set(sequence, message);
     }
@@ -309,11 +325,11 @@ public final class SessionState {
     public Message getNextQueuedMessage() {
         return messageQueue.size() > 0 ? messageQueue.values().iterator().next() : null;
     }
-    
+
     public Collection<Integer> getQueuedSeqNums() {
         return messageQueue.keySet();
     }
-    
+
     public void clearQueue() {
         messageQueue.clear();
     }
@@ -358,17 +374,9 @@ public final class SessionState {
         return messageStore.getCreationTime();
     }
 
-    private boolean needReset() throws IOException {
-        synchronized (lock) {
-            return messageStore.getNextSenderMsgSeqNum() != 1 || messageStore.getNextTargetMsgSeqNum() != 1;
-        }
-    }
-
     public void reset() {
         try {
-            if (needReset()) {
-                messageStore.reset();
-            }
+            messageStore.reset();
         } catch (IOException e) {
             throw new RuntimeError(e);
         }
@@ -379,6 +387,14 @@ public final class SessionState {
         synchronized (lock) {
             resendRange[0] = low;
             resendRange[1] = high;
+        }
+    }
+
+    public void setResendRange(int low, int high, int currentResend) {
+        synchronized (lock) {
+            resendRange[0] = low;
+            resendRange[1] = high;
+            resendRange[2] = currentResend;
         }
     }
 
@@ -418,6 +434,50 @@ public final class SessionState {
         }
     }
 
+    /**
+     * No actual resend request has occurred but at logon we populated tag 789 so that the other side knows we
+     * are missing messages without an explicit resend request and should immediately reply with the missing
+     * messages.
+     * 
+     * This is expected to be called only in the scenario where target is too high on logon and tag 789 is supported.
+     */
+    public void setResetRangeFromLastExpectedLogonNextSeqNumLogon() {
+        synchronized (lock) {
+            // we have already requested all msgs from nextExpectedMsgSeqNum to infinity
+            setResendRange(getLastExpectedLogonNextSeqNum(), 0);
+            // clean up the variable (not really needed)
+            setLastExpectedLogonNextSeqNum(0);
+        }
+    }
+    
+    /**
+     * @param nextExpectedMsgSeqNum
+     * 
+     * This method is thread safe (atomic set).
+     */
+    public void setLastExpectedLogonNextSeqNum(int lastExpectedLogonNextSeqNum) {
+        this.nextExpectedMsgSeqNum.set(lastExpectedLogonNextSeqNum);
+    }
+
+    /**
+     * @return nextExpectedMsgSeqNum
+     * 
+     * This method is thread safe (atomic get).
+     */
+    public int getLastExpectedLogonNextSeqNum() {
+        return this.nextExpectedMsgSeqNum.get();
+    }
+
+    /**
+     * @return true if we populated tag 789 at logon and our sequence 
+     * numbers don't line up we are in an implicit resend mode.
+     * 
+     * This method is thread safe (atomic get).
+     */
+    public boolean isExpectedLogonNextSeqNumSent() {
+        return this.nextExpectedMsgSeqNum.get() != 0;
+    }
+
     public void setLogoutReason(String reason) {
         synchronized (lock) {
             logoutReason = reason;
@@ -439,7 +499,7 @@ public final class SessionState {
     public Object getLock() {
         return lock;
     }
-    
+
     private final static class NullLog implements Log {
         public void onOutgoing(String message) {
         }
