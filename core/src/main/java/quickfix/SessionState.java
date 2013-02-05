@@ -20,10 +20,7 @@
 package quickfix;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -303,6 +300,20 @@ public final class SessionState {
     }
 
     public Message dequeue(int sequence) {
+        Iterator<Integer> i = messageQueue.keySet().iterator();
+        int prevSeqNo = -1;
+        while (i.hasNext()) {
+            int seqNo = i.next();
+            if (seqNo <= prevSeqNo) {
+                throw new IllegalStateException(String.format("Inconsistent sequence number ordering in message queue. Previous #: %d, current #: %d. Dequeuing sequence #: %d", prevSeqNo, seqNo, sequence));
+            }
+            if (seqNo >= sequence)
+                break;
+            log.onEvent(String.format("Garbage-collecting messageQueue entry for sequence # %d", seqNo));
+            i.remove();
+            prevSeqNo = seqNo;
+        }
+
         return messageQueue.remove(sequence);
     }
 
