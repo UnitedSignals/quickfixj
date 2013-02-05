@@ -300,20 +300,6 @@ public final class SessionState {
     }
 
     public Message dequeue(int sequence) {
-        Iterator<Integer> i = messageQueue.keySet().iterator();
-        int prevSeqNo = -1;
-        while (i.hasNext()) {
-            int seqNo = i.next();
-            if (seqNo <= prevSeqNo) {
-                throw new IllegalStateException(String.format("Inconsistent sequence number ordering in message queue. Previous #: %d, current #: %d. Dequeuing sequence #: %d", prevSeqNo, seqNo, sequence));
-            }
-            if (seqNo >= sequence)
-                break;
-            log.onEvent(String.format("Garbage-collecting messageQueue entry for sequence # %d", seqNo));
-            i.remove();
-            prevSeqNo = seqNo;
-        }
-
         return messageQueue.remove(sequence);
     }
 
@@ -355,6 +341,19 @@ public final class SessionState {
 
     public void setNextTargetMsgSeqNum(int sequence) throws IOException {
         messageStore.setNextTargetMsgSeqNum(sequence);
+        Iterator<Integer> i = messageQueue.keySet().iterator();
+        int prevSeqNo = -1;
+        while (i.hasNext()) {
+            int seqNo = i.next();
+            if (seqNo <= prevSeqNo) {
+                throw new IllegalStateException(String.format("Inconsistent sequence number ordering in message queue. Previous #: %d, current #: %d. Dequeuing sequence #: %d", prevSeqNo, seqNo, sequence));
+            }
+            if (seqNo >= sequence)
+                break;
+            log.onEvent(String.format("Garbage-collecting messageQueue entry for sequence # %d (upper bounds: %d)", seqNo, sequence));
+            i.remove();
+            prevSeqNo = seqNo;
+        }
     }
 
     public void incrNextSenderMsgSeqNum() throws IOException {
